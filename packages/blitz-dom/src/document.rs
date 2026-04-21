@@ -510,6 +510,19 @@ impl BaseDocument {
         // Create new node
         let new_node_id = self.create_node(data);
 
+        // Deep-clone the style_attribute so the cloned node gets an independent
+        // PropertyDeclarationBlock. Without this, NodeData::clone() only bumps the
+        // ServoArc reference count, so all clones from the same template share one
+        // block. When dynamic inline styles (e.g. padding_left: "{var}") are set on
+        // one clone via set_style_property, the mutation affects every other clone.
+        if let Some(el) = self.nodes[new_node_id].element_data_mut() {
+            if let Some(ref arc) = el.style_attribute {
+                let guard = self.guard.read();
+                let block = arc.read_with(&guard).clone();
+                el.style_attribute = Some(ServoArc::new(self.guard.wrap(block)));
+            }
+        }
+
         // Recursively clone children
         let new_children: Vec<usize> = children
             .into_iter()
